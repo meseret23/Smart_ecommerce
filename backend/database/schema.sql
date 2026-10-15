@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict WeqTgSgssL3yy9yNPDgee2iL841JwxUqoWEnBt6cznTtc8b7VssOnn9QTzs2Uv5
+\restrict mRN1UFzSS47Q2mgzlVN492sJqzAZKHhHI2O4K8K0WUBSp5rHko0Qhg8MAeXfEI9
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -122,6 +122,35 @@ CREATE TABLE public.notifications (
 
 ALTER TABLE public.notifications ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.notifications_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: order_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.order_items (
+    id integer NOT NULL,
+    order_id integer NOT NULL,
+    product_id integer NOT NULL,
+    quantity integer NOT NULL,
+    unit_price numeric(10,2) NOT NULL,
+    CONSTRAINT order_items_quantity_check CHECK ((quantity > 0)),
+    CONSTRAINT order_items_unit_price_check CHECK ((unit_price >= (0)::numeric))
+);
+
+
+--
+-- Name: order_items_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.order_items ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.order_items_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -338,6 +367,22 @@ ALTER TABLE ONLY public.notifications
 
 
 --
+-- Name: order_items order_items_order_id_product_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.order_items
+    ADD CONSTRAINT order_items_order_id_product_id_key UNIQUE (order_id, product_id);
+
+
+--
+-- Name: order_items order_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.order_items
+    ADD CONSTRAINT order_items_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: orders orders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -442,6 +487,22 @@ ALTER TABLE ONLY public.notifications
 
 
 --
+-- Name: order_items order_items_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.order_items
+    ADD CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+
+
+--
+-- Name: order_items order_items_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.order_items
+    ADD CONSTRAINT order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
 -- Name: orders orders_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -493,5 +554,5 @@ ALTER TABLE ONLY public.reviews
 -- PostgreSQL database dump complete
 --
 
-\unrestrict WeqTgSgssL3yy9yNPDgee2iL841JwxUqoWEnBt6cznTtc8b7VssOnn9QTzs2Uv5
+\unrestrict mRN1UFzSS47Q2mgzlVN492sJqzAZKHhHI2O4K8K0WUBSp5rHko0Qhg8MAeXfEI9
 
