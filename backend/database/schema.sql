@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict mRN1UFzSS47Q2mgzlVN492sJqzAZKHhHI2O4K8K0WUBSp5rHko0Qhg8MAeXfEI9
+\restrict 0e8aNCh8bB01zqj2BOVzyg3PQo2xq5qygS5HkYKk6aTwaqNbwzdQ34gdIupR5hM
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -447,6 +447,76 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: idx_cart_items_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cart_items_product_id ON public.cart_items USING btree (product_id);
+
+
+--
+-- Name: idx_notifications_user_read; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_notifications_user_read ON public.notifications USING btree (user_id, is_read);
+
+
+--
+-- Name: idx_order_items_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_order_items_product_id ON public.order_items USING btree (product_id);
+
+
+--
+-- Name: idx_orders_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_orders_status ON public.orders USING btree (status);
+
+
+--
+-- Name: idx_orders_user_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_orders_user_created ON public.orders USING btree (user_id, created_at DESC);
+
+
+--
+-- Name: idx_payments_order_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_payments_order_id ON public.payments USING btree (order_id);
+
+
+--
+-- Name: idx_products_category_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_products_category_id ON public.products USING btree (category_id);
+
+
+--
+-- Name: idx_products_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_products_created_at ON public.products USING btree (created_at DESC);
+
+
+--
+-- Name: idx_products_seller_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_products_seller_id ON public.products USING btree (seller_id);
+
+
+--
+-- Name: idx_reviews_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reviews_product_id ON public.reviews USING btree (product_id);
+
+
+--
 -- Name: cart_items cart_items_cart_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -554,5 +624,5 @@ ALTER TABLE ONLY public.reviews
 -- PostgreSQL database dump complete
 --
 
-\unrestrict mRN1UFzSS47Q2mgzlVN492sJqzAZKHhHI2O4K8K0WUBSp5rHko0Qhg8MAeXfEI9
+\unrestrict 0e8aNCh8bB01zqj2BOVzyg3PQo2xq5qygS5HkYKk6aTwaqNbwzdQ34gdIupR5hM
 
