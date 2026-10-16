@@ -3,10 +3,13 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { pool } from './db.js';
+import productRoutes from './routes/products.js';
 
 dotenv.config();
 
+
 const app = express();
+
 const PORT = Number(process.env.PORT) || 5000;
 
 app.use(cors());
@@ -32,6 +35,7 @@ app.get('/api/db-check', async (_req, res) => {
     });
   }
 });
+app.use('/api/products', productRoutes);
 
 
 // Start the server
