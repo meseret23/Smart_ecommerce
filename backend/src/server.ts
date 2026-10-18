@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { pool } from './db.js';
 import productRoutes from './routes/products.js';
 import authRoutes from './routes/auth.js';
+import cartRoutes from './routes/cart.js';
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ app.get('/api/db-check', async (_req, res) => {
 });
 app.use('/api/products', productRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/cart', cartRoutes);
 
 
 // Start the server
