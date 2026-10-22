@@ -2,7 +2,7 @@
 import { Router, type Request, type Response } from 'express';
 import { pool } from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
-
+import { PoolClient } from 'pg';
 const router = Router();
 
 const getCartItems = async (
@@ -56,7 +56,6 @@ const getCartItems = async (
     });
   }
 };
-
 
 const addToCart = async (
   req: Request,
@@ -193,8 +192,6 @@ const addToCart = async (
   }
 };
 
-
-
 const updateCartItem = async (
   req: Request,
   res: Response,
@@ -295,8 +292,6 @@ const updateCartItem = async (
       });
       return;
     }
-
-    // STEP 7: Commit the transaction
     await client.query('COMMIT');
 
     res.status(200).json({
@@ -325,16 +320,12 @@ const updateCartItem = async (
 };
 
 
-
-
 const removeCartItem = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
   const productId = Number(req.params.productId);
   const userId = Number(req.user!.id);
-
-  // Validate product ID
   if (!Number.isInteger(productId) || productId <= 0) {
     res.status(400).json({
       success: false,
@@ -440,6 +431,117 @@ const clearCart = async (
   }
 };
 
+export const verifyCart = async (req: Request, res: Response): Promise<void> => {
+  const userId = Number(req.user?.id);
+
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    res.status(401).json({
+      success: false,
+      message: 'Authentication required.',
+    });
+    return;
+  }
+
+  let client: PoolClient | undefined;
+
+  try {
+    client = await pool.connect();
+
+    // 1. Fetch user's cart ID
+    const cartResult = await client.query(
+      `SELECT id FROM carts WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (cartResult.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: 'Cart not found.',
+      });
+      return;
+    }
+
+    const cartId = Number(cartResult.rows[0].id);
+
+    // 2. Fetch cart items along with live product data
+    const itemsResult = await client.query(
+      `SELECT 
+         ci.product_id,
+         ci.quantity,
+         p.name AS product_name,
+         p.price,
+         p.stock_quantity
+       FROM cart_items AS ci
+       JOIN products AS p ON p.id = ci.product_id
+       WHERE ci.cart_id = $1
+       ORDER BY p.id`,
+      [cartId]
+    );
+
+    const items = itemsResult.rows;
+
+    if (items.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Your cart is empty.',
+      });
+      return;
+    }
+
+    let isValid = true;
+    let totalCents = 0;
+    const verifiedItems = [];
+
+    // 3. Inspect each item for stock or data issues
+    for (const item of items) {
+      const quantity = Number(item.quantity);
+      const stock = Number(item.stock_quantity);
+      const price = Number(item.price);
+
+      let itemIssue = null;
+
+      if (quantity > stock) {
+        isValid = false;
+        itemIssue = `Insufficient stock. Only ${stock} available.`;
+      } else if (stock === 0) {
+        isValid = false;
+        itemIssue = 'Item is out of stock.';
+      }
+
+      const priceCents = Math.round(price * 100);
+      totalCents += priceCents * quantity;
+
+      verifiedItems.push({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        requested_quantity: quantity,
+        available_stock: stock,
+        unit_price: price.toFixed(2),
+        has_issue: itemIssue !== null,
+        issue_message: itemIssue,
+      });
+    }
+
+    const subtotal = (totalCents / 100).toFixed(2);
+
+    res.status(200).json({
+      success: true,
+      is_valid: isValid,
+      message: isValid ? 'Cart is ready for checkout.' : 'Some items require your attention.',
+      items: verifiedItems,
+      subtotal,
+    });
+
+  } catch (error) {
+    console.error('Verify cart error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Could not verify your cart. Please try again.',
+    });
+  } finally {
+    client?.release();
+  }
+};
 
 
 
@@ -458,6 +560,7 @@ const clearCart = async (
 
 
 
+router.post('/verify', authenticateToken, verifyCart);
 router.delete('/', authenticateToken, clearCart);
 router.delete('/:productId', authenticateToken, removeCartItem);
 router.post('/', authenticateToken, addToCart);
