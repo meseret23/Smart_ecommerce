@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { pool } from '../db.js';
+import { authenticateToken, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -246,6 +247,128 @@ const getAllProducts = async (
   }
 };
 
+const createProductReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+   const { id: product_id } = req.params;
+    const user_id = req.user?.id;
+    const { rating, comment } = req.body;
+
+    // 1. Validation
+    if (!rating || rating < 1 || rating > 5) {
+      res.status(400).json({ message: 'Rating must be between 1 and 5' });
+      return;
+    }
+
+    // 2. Verified Purchase Check
+    const checkSql = `
+      SELECT 1 
+      FROM orders o
+      JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.user_id = $1 
+        AND oi.product_id = $2 
+        AND o.status = 'delivered';
+    `;
+    const checkResult = await pool.query(checkSql, [user_id, product_id]);
+
+    if (checkResult.rows.length === 0) {
+      res.status(403).json({ message: 'Only customers with delivered orders can review this product' });
+      return;
+    }
+
+    // 3. Insert or Update Review (Upsert)
+    const upsertSql = `
+      INSERT INTO reviews (user_id, product_id, rating, comment) 
+      VALUES ($1, $2, $3, $4) 
+      ON CONFLICT (user_id, product_id) 
+      DO UPDATE SET 
+        rating = EXCLUDED.rating, 
+        comment = EXCLUDED.comment,
+        created_at = CURRENT_TIMESTAMP
+      RETURNING *;
+    `;
+    const reviewResult = await pool.query(upsertSql, [user_id, product_id, rating, comment]);
+
+    res.status(200).json({
+      message: 'Review saved successfully',
+      review: reviewResult.rows[0]
+    });
+
+  } catch (error: any) {
+    console.error('Error saving review:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Controller: Get reviews and summary stats for a product
+const getProductReviews = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id: product_id } = req.params;
+
+    // 1. Fetch all reviews for the product, joined with user details
+   // 1. Fetch all reviews for the product, joined with user details
+    const reviewsQuery = `
+      SELECT r.id, r.rating, r.comment, r.created_at, u.full_name AS user_name
+      FROM reviews r
+      JOIN users u ON r.user_id = u.id
+      WHERE r.product_id = $1
+      ORDER BY r.created_at DESC;
+    `;
+    const reviewsResult = await pool.query(reviewsQuery, [product_id]);
+
+    // 2. Calculate average rating and total review count
+    const statsQuery = `
+      SELECT 
+        COALESCE(AVG(rating), 0) AS average_rating, 
+        COUNT(*) AS total_reviews
+      FROM reviews
+      WHERE product_id = $1;
+    `;
+    const statsResult = await pool.query(statsQuery, [product_id]);
+    const stats = statsResult.rows[0];
+
+    // 3. Send response
+    res.status(200).json({
+      average_rating: parseFloat(stats.average_rating).toFixed(1),
+      total_reviews: parseInt(stats.total_reviews, 10),
+      reviews: reviewsResult.rows
+    });
+
+  } catch (error: any) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+// Controller: Delete a review
+const deleteReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id: review_id } = req.params;
+    const user_id = req.user?.id;
+    const deleteSql = `
+      DELETE FROM reviews 
+      WHERE id = $1 AND user_id = $2 
+      RETURNING *;
+    `;
+    const result = await pool.query(deleteSql, [review_id, user_id]);
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ message: 'Review not found or you do not have permission to delete it' });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'Review deleted successfully',
+      deleted_review: result.rows[0]
+    });
+
+  } catch (error: any) {
+    console.error('Error deleting review:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+router.delete('/reviews/:id', authenticateToken, deleteReview);
+router.get('/:id/reviews', getProductReviews);
+router.post('/:id/reviews', authenticateToken, createProductReview);
 router.get('/', getAllProducts);
 router.get('/name/:name', getProductByName);
 router.get('/:id', getProductById);

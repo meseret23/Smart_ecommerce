@@ -255,20 +255,7 @@ ALTER TABLE public.products ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 --
 -- Name: reviews; Type: TABLE; Schema: public; Owner: -
 --
-
-CREATE TABLE public.reviews (
-    id integer NOT NULL,
-    user_id integer NOT NULL,
-    product_id integer NOT NULL,
-    rating integer NOT NULL,
-    comment text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT reviews_rating_check CHECK (((rating >= 1) AND (rating <= 5)))
-);
-
-
---
--- Name: reviews_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+Name: reviews_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 ALTER TABLE public.reviews ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
@@ -287,7 +274,20 @@ ALTER TABLE public.reviews ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.users (
     id integer NOT NULL,
-    full_name character varying(120) NOT NULL,
+    full_name
+CREATE TABLE public.reviews (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    product_id integer NOT NULL,
+    rating integer NOT NULL,
+    comment text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT reviews_rating_check CHECK (((rating >= 1) AND (rating <= 5)))
+);
+
+
+--
+--  character varying(120) NOT NULL,
     email character varying(255) NOT NULL,
     password_hash text NOT NULL,
     role character varying(20) DEFAULT 'customer'::character varying NOT NULL,
