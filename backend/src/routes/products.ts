@@ -299,23 +299,33 @@ const createProductReview = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-// Controller: Get reviews and summary stats for a product
+
 const getProductReviews = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id: product_id } = req.params;
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 5;
+    const offset = (page - 1) * limit;
 
-    // 1. Fetch all reviews for the product, joined with user details
-   // 1. Fetch all reviews for the product, joined with user details
+    // 1. Check if product exists
+    const productCheck = await pool.query('SELECT id FROM products WHERE id = $1', [product_id]);
+    if (productCheck.rows.length === 0) {
+      res.status(404).json({ message: 'Product not found' });
+      return;
+    }
+
+    // 2. Fetch paginated reviews joined with user details
     const reviewsQuery = `
       SELECT r.id, r.rating, r.comment, r.created_at, u.full_name AS user_name
       FROM reviews r
       JOIN users u ON r.user_id = u.id
       WHERE r.product_id = $1
-      ORDER BY r.created_at DESC;
+      ORDER BY r.created_at DESC
+      LIMIT $2 OFFSET $3;
     `;
-    const reviewsResult = await pool.query(reviewsQuery, [product_id]);
+    const reviewsResult = await pool.query(reviewsQuery, [product_id, limit, offset]);
 
-    // 2. Calculate average rating and total review count
+    // 3. Calculate statistics and total pages
     const statsQuery = `
       SELECT 
         COALESCE(AVG(rating), 0) AS average_rating, 
@@ -325,11 +335,16 @@ const getProductReviews = async (req: Request, res: Response): Promise<void> => 
     `;
     const statsResult = await pool.query(statsQuery, [product_id]);
     const stats = statsResult.rows[0];
+    const totalReviews = parseInt(stats.total_reviews, 10);
+    const totalPages = Math.ceil(totalReviews / limit);
 
-    // 3. Send response
+    // 4. Send response with pagination metadata
     res.status(200).json({
       average_rating: parseFloat(stats.average_rating).toFixed(1),
-      total_reviews: parseInt(stats.total_reviews, 10),
+      total_reviews: totalReviews,
+      page,
+      limit,
+      total_pages: totalPages,
       reviews: reviewsResult.rows
     });
 
@@ -338,7 +353,7 @@ const getProductReviews = async (req: Request, res: Response): Promise<void> => 
     res.status(500).json({ message: 'Internal server error' });
   }
 };
-// Controller: Delete a review
+
 const deleteReview = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id: review_id } = req.params;
@@ -366,6 +381,145 @@ const deleteReview = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+const toggleReviewHelpful = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id: review_id } = req.params;
+    const user_id = req.user?.id;
+    const existingVote = await pool.query(
+      'SELECT id FROM review_votes WHERE review_id = $1 AND user_id = $2',
+      [review_id, user_id]
+    );
+
+    if (existingVote.rows.length > 0) {
+      await pool.query(
+        'DELETE FROM review_votes WHERE review_id = $1 AND user_id = $2',
+        [review_id, user_id]
+      );
+      res.status(200).json({ message: 'Helpful vote removed', voted: false });
+    } else {
+      await pool.query(
+        'INSERT INTO review_votes (review_id, user_id) VALUES ($1, $2)',
+        [review_id, user_id]
+      );
+      res.status(200).json({ message: 'Marked review as helpful', voted: true });
+    }
+
+  } catch (error: any) {
+    console.error('Error toggling review helpful vote:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+const createProduct = async (req: Request, res: Response): Promise<void> => {
+    const seller_id = req.user?.id;
+    const { name, description, price, stock_quantity, category_id } = req.body;
+    
+    try {
+        const query = `
+            INSERT INTO products (name, description, price, stock_quantity, category_id, seller_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *;
+        `;
+        const values = [name, description, price, stock_quantity || 0, category_id, seller_id];
+        const result = await pool.query(query, values);
+        
+        res.status(201).json({ 
+            message: 'Product created successfully', 
+            product: result.rows[0] 
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+const updateProduct = async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params; // Product ID from URL
+    const { id: userId, role } = req.user || {}; // Logged-in user's ID and role
+    const { name, description, price, stock_quantity, category_id } = req.body;
+
+    try {
+        // 1. Check if product exists
+        const checkQuery = `SELECT * FROM products WHERE id = $1`;
+        const checkResult = await pool.query(checkQuery, [id]);
+
+        if (checkResult.rows.length === 0) {
+            res.status(404).json({ message: 'Product not found' });
+            return;
+        }
+
+        const product = checkResult.rows[0];
+
+        // 2. Enforce ownership: Admin can update anything, sellers can only update their own products
+        if (role !== 'admin' && product.seller_id !== Number(userId)) {
+            res.status(403).json({ message: 'Forbidden: You can only modify your own products' });
+            return;
+        }
+
+        // 3. Run the update query
+        const updateSql = `
+            UPDATE products 
+            SET name = COALESCE($1, name),
+                description = COALESCE($2, description),
+                price = COALESCE($3, price),
+                stock_quantity = COALESCE($4, stock_quantity),
+                category_id = COALESCE($5, category_id)
+            WHERE id = $6
+            RETURNING *;
+        `;
+        const values = [name, description, price, stock_quantity, category_id, id];
+        const result = await pool.query(updateSql, values);
+
+        res.status(200).json({ 
+            message: 'Updated successfully', 
+            product: result.rows[0] 
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+const deleteProduct = async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { id: userId, role } = req.user || {};
+
+    try {
+        // 1. Check if product exists
+        const checkQuery = `SELECT * FROM products WHERE id = $1`;
+        const checkResult = await pool.query(checkQuery, [id]);
+
+        if (checkResult.rows.length === 0) {
+            res.status(404).json({ message: 'Product not found' });
+            return;
+        }
+
+        const product = checkResult.rows[0];
+
+        if (role !== 'admin' && product.seller_id !== Number(userId)) {
+            res.status(403).json({ message: 'Forbidden: You can only delete your own products' });
+            return;
+        }
+        const deleteQuery = `DELETE FROM products WHERE id = $1 RETURNING *;`;
+        const result = await pool.query(deleteQuery, [id]);
+
+        res.status(200).json({ 
+            message: 'Product deleted successfully', 
+            product: result.rows[0] 
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+
+
+
+
+router.delete('/:id', authenticateToken, requireRole('seller', 'admin'), deleteProduct);
+router.post('/', authenticateToken, requireRole('seller', 'admin'), createProduct);
+router.patch('/:id', authenticateToken, requireRole('seller', 'admin'), updateProduct);
+router.post('/reviews/:id/helpful', authenticateToken, toggleReviewHelpful);
 router.delete('/reviews/:id', authenticateToken, deleteReview);
 router.get('/:id/reviews', getProductReviews);
 router.post('/:id/reviews', authenticateToken, createProductReview);

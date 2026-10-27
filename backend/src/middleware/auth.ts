@@ -1,10 +1,11 @@
 
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-
 export interface AuthPayload {
   id: string;
   role: string;
+  email?: string;
+  first_name?: string;
 }
 
 declare global {

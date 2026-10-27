@@ -10,7 +10,6 @@ const getCartItems = async (
   res: Response,
 ): Promise<void> => {
   try {
-    // The user ID comes from our verified authentication token.
     const userId = Number(req.user!.id);
 
     const sql = `
@@ -63,7 +62,6 @@ const addToCart = async (
 ): Promise<void> => {
   const { product_id, quantity } = req.body ?? {};
 
-  // STEP 1: Validate the client's input.
   if (
     !Number.isInteger(product_id) ||
     product_id <= 0 ||
@@ -80,11 +78,8 @@ const addToCart = async (
   let client;
 
   try {
-    // STEP 2: Get a database connection and start a transaction.
     client = await pool.connect();
     await client.query('BEGIN');
-
-    // STEP 3: Find the product and lock its row.
     const productResult = await client.query(
       `SELECT id, name, price, stock_quantity
        FROM products

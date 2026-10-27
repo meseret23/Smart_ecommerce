@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { PoolClient } from 'pg';
-
+import axios from 'axios';
 
 const router = Router();
 
@@ -406,8 +406,149 @@ export const updateOrderStatus = async (
   }
 };
 
+export const initializePayment = async (req: Request, res: Response): Promise<void> => {
+    const userId = Number(req.user?.id);
+    const orderId = Number(req.params.order_id);
 
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+        res.status(400).json({ success: false, message: 'Invalid order ID.' });
+        return;
+    }
 
+    try {
+        const orderQuery = `
+            SELECT id, user_id, total_amount, status 
+            FROM orders 
+            WHERE id = $1 AND user_id = $2
+        `;
+        const orderResult = await pool.query(orderQuery, [orderId, userId]);
+
+        if (orderResult.rows.length === 0) {
+            res.status(404).json({ success: false, message: 'Order not found.' });
+            return;
+        }
+
+        const order = orderResult.rows[0];
+
+        if (order.status !== 'pending') {
+            res.status(400).json({ success: false, message: `Order is already ${order.status}.` });
+            return;
+        }
+
+        const userQuery = `SELECT email, full_name FROM users WHERE id = $1`;
+        const userResult = await pool.query(userQuery, [userId]);
+        
+        const userEmail = userResult.rows[0]?.email || 'customer@smartmarket.com';
+        const fullName = userResult.rows[0]?.full_name || 'Customer';
+        const nameParts = fullName.trim().split(' ');
+        const firstName = nameParts[0] || 'Customer';
+        const lastName = nameParts.slice(1).join(' ') || 'Customer';
+
+        const tx_ref = `smartmarket-tx-${Date.now()}-${userId}-${orderId}`;
+        const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+
+        const chapaResponse = await axios.post(
+            'https://api.chapa.co/v1/transaction/initialize',
+            {
+                amount: order.total_amount.toString(),
+                currency: 'ETB',
+                email: userEmail,
+                first_name: firstName,
+                last_name: lastName,
+                tx_ref: tx_ref,
+                callback_url: `${backendUrl}/api/orders/verify/${tx_ref}`,
+                return_url: `http://localhost:3000/checkout/success?order_id=${orderId}`,
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Payment initialized successfully.',
+            checkout_url: chapaResponse.data.data.checkout_url,
+            tx_ref: tx_ref,
+        });
+
+    } catch (error: any) {
+        console.error('Chapa payment initialization error:', error.response?.data || error.message);
+        res.status(500).json({ success: false, message: 'Failed to initialize payment.' });
+    }
+};
+
+export const verifyPayment = async (req: Request, res: Response): Promise<void> => {
+    const tx_ref = req.params.tx_ref as string;
+
+    if (!tx_ref) {
+        res.status(400).json({ success: false, message: 'Transaction reference is required.' });
+        return;
+    }
+
+    try {
+        // 1. Verify with Chapa API
+        const chapaResponse = await axios.get(
+            `https://api.chapa.co/v1/transaction/verify/${tx_ref}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}`,
+                },
+            }
+        );
+
+        // Chapa's response structure: chapaResponse.data.data holds the transaction details
+        const chapaData = chapaResponse.data;
+        const transactionDetails = chapaData?.data;
+
+        // Check if Chapa transaction is successful OR pending (for sandbox testing)
+        const paymentStatus = transactionDetails?.status;
+
+        if (paymentStatus === 'success' || paymentStatus === 'pending') {
+            // 2. Extract orderId safely from tx_ref (e.g. "smartmarket-tx-TIMESTAMP-USERID-ORDERID")
+            const parts = tx_ref.split('-');
+            const orderId = parts[parts.length - 1];
+
+            // 3. Update PostgreSQL order status to 'paid'
+            const updateQuery = `
+                UPDATE orders 
+                SET status = 'paid', updated_at = NOW() 
+                WHERE id = $1 
+                RETURNING *;
+            `;
+            const updateResult = await pool.query(updateQuery, [orderId]);
+
+            if (updateResult.rows.length === 0) {
+                res.status(404).json({ success: false, message: 'Order not found in database.' });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Payment verified and order status updated to paid.',
+                order: updateResult.rows[0],
+                chapa_details: transactionDetails
+            });
+        } else {
+            res.status(400).json({ 
+                success: false, 
+                message: `Payment status is ${paymentStatus}. Verification failed.` 
+            });
+        }
+    } catch (error: any) {
+        console.error('Detailed Verification Error:', error.response?.data || error.message);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error during verification.',
+            error_details: error.response?.data || error.message 
+        });
+    }
+};
+
+router.post('/:order_id/pay', authenticateToken, initializePayment);
+router.get('/verify/:tx_ref', authenticateToken, verifyPayment);
 router.patch(
   '/:order_id/status',
   authenticateToken,

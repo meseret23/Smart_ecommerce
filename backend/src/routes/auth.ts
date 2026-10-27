@@ -17,10 +17,11 @@ function getJwtSecret(): string {
   return secret;
 }
 
-// POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, email, password } = req.body ?? {};
+    const { full_name, email, password, role = 'customer' } = req.body ?? {};
+    const validRoles = ['customer', 'seller', 'admin'];
+    const userRole = validRoles.includes(role) ? role : 'customer';
 
     if (
       typeof full_name !== 'string' ||
@@ -66,13 +67,12 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 12);
 
     const result = await pool.query(
-      `INSERT INTO users (full_name, email, password_hash, role)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (email) DO NOTHING
-       RETURNING id, full_name, email, role, created_at`,
-      [name, normalizedEmail, passwordHash, 'customer'],
-    );
-
+  `INSERT INTO users (full_name, email, password_hash, role)
+   VALUES ($1, $2, $3, $4)
+   ON CONFLICT (email) DO NOTHING
+   RETURNING id, full_name, email, role, created_at`,
+  [name, normalizedEmail, passwordHash, userRole],
+);
     if (result.rows.length === 0) {
       return res.status(409).json({
         success: false,
@@ -95,7 +95,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body ?? {};
@@ -161,7 +160,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me
+
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
