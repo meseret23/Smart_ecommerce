@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.js';
 import cartRoutes from './routes/cart.js';
 import orderRoutes from './routes/orders.js';
 import reportRoutes from './routes/report';
+import aiRouter from './routes/ai';
 
 dotenv.config();
 
@@ -39,6 +40,8 @@ app.get('/api/db-check', async (_req, res) => {
     });
   }
 });
+
+app.use('/api/ai', aiRouter);
 app.use('/api/products', productRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/cart', cartRoutes);
