@@ -3,7 +3,7 @@ import { searchProducts, SearchFilters } from './productSearchService';
 
 const openai = new OpenAI({
     baseURL: 'http://localhost:11434/v1',
-    apiKey: 'ollama', // Ollama doesn't need a real key, but the SDK requires a string
+    apiKey: 'ollama',  
 });
 
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [

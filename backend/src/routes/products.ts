@@ -95,8 +95,6 @@ const getAllProducts = async (
 ): Promise<void> => {
   try {
     const { search, categoryId, sortBy, order, page, limit } = req.query;
-
-    // Validate search input
     if (search !== undefined && typeof search !== 'string') {
       res.status(400).json({
         success: false,
@@ -105,7 +103,6 @@ const getAllProducts = async (
       return;
     }
 
-    // Validate category ID
     let parsedCategoryId: number | undefined;
 
     if (categoryId !== undefined) {
@@ -124,7 +121,7 @@ const getAllProducts = async (
       }
     }
 
-    // Validate sorting
+
     const allowedSortFields: Record<string, string> = {
       name: 'name',
       price: 'price',
@@ -153,7 +150,7 @@ const getAllProducts = async (
       return;
     }
 
-    // Validate pagination
+
     const parsedPage = page === undefined ? 1 : Number(page);
     const parsedLimit = limit === undefined ? 10 : Number(limit);
 
@@ -175,7 +172,7 @@ const getAllProducts = async (
       return;
     }
 
-    // Build safe WHERE conditions
+  
     const conditions: string[] = [];
     const values: (string | number)[] = [];
 
@@ -194,7 +191,7 @@ const getAllProducts = async (
         ? `WHERE ${conditions.join(' AND ')}`
         : '';
 
-    // Count matching products before pagination
+   
     const countSql = `
       SELECT COUNT(*)::int AS total
       FROM products
@@ -204,7 +201,6 @@ const getAllProducts = async (
     const countResult = await pool.query(countSql, values);
     const total: number = countResult.rows[0].total;
 
-    // Retrieve the requested page
     const offset = (parsedPage - 1) * parsedLimit;
     const dataValues = [...values, parsedLimit, offset];
 
@@ -217,7 +213,8 @@ const getAllProducts = async (
         stock_quantity,
         created_at,
         seller_id,
-        category_id
+        category_id,
+        image_url
       FROM products
       ${whereClause}
       ORDER BY ${allowedSortFields[selectedSort]} ${selectedOrder.toUpperCase()}, id ASC
