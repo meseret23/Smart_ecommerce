@@ -547,17 +547,19 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
     }
 };
 
-router.post('/:order_id/pay', authenticateToken, initializePayment);
+
+router.get('/my', authenticateToken, getMyOrders);
 router.get('/verify/:tx_ref', authenticateToken, verifyPayment);
+
+router.post('/:order_id/pay', authenticateToken, initializePayment);
 router.patch(
   '/:order_id/status',
   authenticateToken,
   requireRole('admin'),
   updateOrderStatus
 );
-
 router.get('/:order_id', authenticateToken, getOrderById);
-router.get('/my', authenticateToken, getMyOrders);
-router.post('/', authenticateToken, createOrder);
 
+
+router.post('/', authenticateToken, createOrder);
 export default router;

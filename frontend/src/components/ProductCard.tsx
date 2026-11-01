@@ -3,10 +3,11 @@ import type { Product } from '../services/productService';
 
 interface ProductCardProps {
   product: Product;
+  onAddToCart?: () => void;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
-    console.log("Product data:", product.name, "image_url:", product.image_url);
+export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }) => {
+  console.log("Product data:", product.name, "image_url:", product.image_url);
   const imageUrl = product.image_url || (product as any).imageUrl;
 
   return (
@@ -38,7 +39,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <span className="text-xs text-gray-400 block">Price</span>
           <span className="text-lg font-bold text-gray-900">{product.price} ETB</span>
         </div>
-        <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+        <button 
+          onClick={onAddToCart}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition cursor-pointer"
+        >
           Add to Cart
         </button>
       </div>

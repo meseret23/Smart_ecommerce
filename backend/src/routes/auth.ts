@@ -19,34 +19,40 @@ function getJwtSecret(): string {
 
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, email, password, role = 'customer' } = req.body ?? {};
+    const { full_name, fullName, email, phone, password, role = 'customer' } = req.body ?? {};
     const validRoles = ['customer', 'seller', 'admin'];
     const userRole = validRoles.includes(role) ? role : 'customer';
 
+    const nameInput = (full_name || fullName)?.trim();
+
+    // 1. Basic Type & Presence Validation
     if (
-      typeof full_name !== 'string' ||
+      !nameInput ||
       typeof email !== 'string' ||
+      typeof phone !== 'string' ||
       typeof password !== 'string' ||
-      !full_name.trim() ||
       !email.trim() ||
+      !phone.trim() ||
       !password
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Full name, email, and password are required.',
+        message: 'Full name, email, phone number, and password are required.',
       });
     }
 
-    const name = full_name.trim();
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = phone.trim();
 
-    if (name.length > 120) {
+    // 2. Name Length Check
+    if (nameInput.length > 120) {
       return res.status(400).json({
         success: false,
         message: 'Full name must be 120 characters or fewer.',
       });
     }
 
+    // 3. Email Format Check
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return res.status(400).json({
         success: false,
@@ -54,6 +60,16 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    // 4. Ethiopian Phone Format Check (09..., 07..., or +251...)
+    const ethiopianPhoneRegex = /^(?:\+251|0)[97]\d{8}$/;
+    if (!ethiopianPhoneRegex.test(normalizedPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid Ethiopian phone number (e.g., 0911223344 or +251911223344).',
+      });
+    }
+
+    // 5. Password Security Check
     if (
       password.length < 8 ||
       Buffer.byteLength(password, 'utf8') > 72
@@ -64,15 +80,18 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    // 6. Hash Password
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // 7. Insert into PostgreSQL
     const result = await pool.query(
-  `INSERT INTO users (full_name, email, password_hash, role)
-   VALUES ($1, $2, $3, $4)
-   ON CONFLICT (email) DO NOTHING
-   RETURNING id, full_name, email, role, created_at`,
-  [name, normalizedEmail, passwordHash, userRole],
-);
+      `INSERT INTO users (full_name, email, phone, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (email) DO NOTHING
+       RETURNING id, full_name, email, phone, role, created_at`,
+      [nameInput, normalizedEmail, normalizedPhone, passwordHash, userRole]
+    );
+
     if (result.rows.length === 0) {
       return res.status(409).json({
         success: false,
@@ -94,7 +113,6 @@ router.post('/register', async (req, res) => {
     });
   }
 });
-
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body ?? {};
