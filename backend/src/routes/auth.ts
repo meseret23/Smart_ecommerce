@@ -19,90 +19,104 @@ function getJwtSecret(): string {
 
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, fullName, email, phone, password, role = 'customer' } = req.body ?? {};
-    const validRoles = ['customer', 'seller', 'admin'];
-    const userRole = validRoles.includes(role) ? role : 'customer';
+    const { full_name, emailOrPhone, password, role } = req.body ?? {};
 
-    const nameInput = (full_name || fullName)?.trim();
-
-    // 1. Basic Type & Presence Validation
+    // 1. Basic type checking and validation
     if (
-      !nameInput ||
-      typeof email !== 'string' ||
-      typeof phone !== 'string' ||
+      typeof full_name !== 'string' ||
       typeof password !== 'string' ||
-      !email.trim() ||
-      !phone.trim() ||
+      !full_name.trim() ||
       !password
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Full name, email, phone number, and password are required.',
+        message: 'Full name and password are required.',
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedPhone = phone.trim();
+    const name = full_name.trim();
 
-    // 2. Name Length Check
-    if (nameInput.length > 120) {
+    if (name.length > 120) {
       return res.status(400).json({
         success: false,
         message: 'Full name must be 120 characters or fewer.',
       });
     }
 
-    // 3. Email Format Check
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    // Password length validation (bcrypt 72 byte limit check)
+    if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide a valid email address.',
+        message: 'Password must be between 8 and 72 bytes.',
       });
     }
 
-    // 4. Ethiopian Phone Format Check (09..., 07..., or +251...)
-    const ethiopianPhoneRegex = /^(?:\+251|0)[97]\d{8}$/;
-    if (!ethiopianPhoneRegex.test(normalizedPhone)) {
+    // 2. Prevent unauthorized admin registration
+    // Only allow 'customer' or 'seller' via public registration
+    const userRole = role === 'seller' ? 'seller' : 'customer';
+
+    // 3. Determine if input is Email or Phone number
+    const inputStr = (emailOrPhone || req.body.email || req.body.phone || '').toString().trim();
+    
+    if (!inputStr) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide a valid Ethiopian phone number (e.g., 0911223344 or +251911223344).',
+        message: 'Please provide a valid email address or phone number.',
       });
     }
 
-    // 5. Password Security Check
-    if (
-      password.length < 8 ||
-      Buffer.byteLength(password, 'utf8') > 72
-    ) {
+    let email: string | null = null;
+    let phone: string | null = null;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Ethiopian phone format check (supports 09..., 07..., or +251...)
+    const phoneRegex = /^(?:\+251|0)?[79]\d{8}$/;
+
+    if (emailRegex.test(inputStr)) {
+      email = inputStr.toLowerCase();
+    } else if (phoneRegex.test(inputStr)) {
+      // Normalize Ethiopian phone number format to standard 09... / 07...
+      phone = inputStr.startsWith('+251') ? '0' + inputStr.slice(4) : inputStr;
+    } else {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 8 characters and no more than 72 bytes.',
+        message: 'Please provide a valid email address or Ethiopian phone number (e.g. 0912345678).',
       });
     }
 
-    // 6. Hash Password
+    // 4. Hash password with bcrypt
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // 7. Insert into PostgreSQL
+    // 5. Insert user into PostgreSQL (handling existing email or phone conflict)
     const result = await pool.query(
       `INSERT INTO users (full_name, email, phone, password_hash, role)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (email) DO NOTHING
+       ON CONFLICT DO NOTHING
        RETURNING id, full_name, email, phone, role, created_at`,
-      [nameInput, normalizedEmail, normalizedPhone, passwordHash, userRole]
+      [name, email, phone, passwordHash, userRole]
     );
 
     if (result.rows.length === 0) {
       return res.status(409).json({
         success: false,
-        message: 'An account with this email already exists.',
+        message: 'An account with this email or phone number already exists.',
       });
     }
+
+    const newUser = result.rows[0];
+
+    // 6. Generate JWT token so the user is logged in automatically upon registration
+    const token = jwt.sign(
+      { id: newUser.id, role: newUser.role },
+      getJwtSecret(),
+      { subject: String(newUser.id), expiresIn: '7d' }
+    );
 
     return res.status(201).json({
       success: true,
       message: 'Account created successfully.',
-      user: result.rows[0],
+      token,
+      user: newUser,
     });
   } catch (error) {
     console.error('Registration failed:', error);
@@ -113,48 +127,54 @@ router.post('/register', async (req, res) => {
     });
   }
 });
+
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body ?? {};
+    const { identifier, password } = req.body ?? {};
+
+    // Support legacy/alternative 'email' or 'phone' payload keys if sent by frontend
+    const loginInput = identifier || req.body?.email || req.body?.phone;
 
     if (
-      typeof email !== 'string' ||
+      typeof loginInput !== 'string' ||
       typeof password !== 'string' ||
-      !email.trim() ||
+      !loginInput.trim() ||
       !password
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required.',
+        message: 'Phone/Email and password are required.',
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedInput = loginInput.trim().toLowerCase();
 
+    // Query database for matching email OR matching phone number
     const result = await pool.query(
-      `SELECT id, full_name, email, password_hash, role
+      `SELECT id, full_name, email, phone, password_hash, role
        FROM users
-       WHERE email = $1`,
-      [normalizedEmail],
+       WHERE LOWER(email) = $1 OR phone = $1`,
+      [normalizedInput]
     );
 
     const user = result.rows[0];
 
-    // Use the same response for an unknown email and wrong password.
+   
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password.',
+        message: 'Invalid credentials.',
       });
     }
 
+
     const token = jwt.sign(
-      { role: user.role },
+      { id: user.id, role: user.role },
       getJwtSecret(),
       {
         subject: String(user.id),
-        expiresIn: '2h',
-      },
+        expiresIn: '7d', 
+      }
     );
 
     return res.status(200).json({
@@ -165,11 +185,12 @@ router.post('/login', async (req, res) => {
         id: user.id,
         full_name: user.full_name,
         email: user.email,
+        phone: user.phone,
         role: user.role,
       },
     });
   } catch (error) {
-    console.error('Login failed:', error);
+    console.error('Login error:', error);
 
     return res.status(500).json({
       success: false,

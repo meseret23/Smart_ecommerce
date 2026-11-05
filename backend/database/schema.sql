@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 0e8aNCh8bB01zqj2BOVzyg3PQo2xq5qygS5HkYKk6aTwaqNbwzdQ34gdIupR5hM
+\restrict 9IxSGInysHIFdr86p3g7gTMR8ecZShdck41lgT6UityAGjBmZNtiRhi22ZJDYYe
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -170,7 +170,7 @@ CREATE TABLE public.orders (
     total_amount numeric(12,2) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT orders_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'confirmed'::character varying, 'processing'::character varying, 'shipped'::character varying, 'delivered'::character varying, 'cancelled'::character varying])::text[]))),
+    CONSTRAINT orders_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'paid'::character varying, 'confirmed'::character varying, 'processing'::character varying, 'shipped'::character varying, 'delivered'::character varying, 'completed'::character varying, 'cancelled'::character varying, 'failed'::character varying])::text[]))),
     CONSTRAINT orders_total_amount_check CHECK ((total_amount >= (0)::numeric))
 );
 
@@ -181,6 +181,34 @@ CREATE TABLE public.orders (
 
 ALTER TABLE public.orders ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.orders_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.password_reset_tokens (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    token_hash character varying(64) NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    used_at timestamp with time zone
+);
+
+
+--
+-- Name: password_reset_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.password_reset_tokens ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.password_reset_tokens_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -233,6 +261,8 @@ CREATE TABLE public.products (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     seller_id integer,
     category_id integer,
+    image_url text,
+    is_active boolean DEFAULT true NOT NULL,
     CONSTRAINT products_price_check CHECK ((price >= (0)::numeric)),
     CONSTRAINT products_stock_quantity_check CHECK ((stock_quantity >= 0))
 );
@@ -253,9 +283,93 @@ ALTER TABLE public.products ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: reports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.reports (
+    id integer NOT NULL,
+    user_id integer,
+    order_id integer,
+    product_id integer,
+    category character varying(50) NOT NULL,
+    description text NOT NULL,
+    status character varying(20) DEFAULT 'pending'::character varying,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    image_url text,
+    admin_notes text,
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: reports_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.reports_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: reports_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.reports_id_seq OWNED BY public.reports.id;
+
+
+--
+-- Name: review_votes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.review_votes (
+    id integer NOT NULL,
+    review_id integer NOT NULL,
+    user_id integer NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+--
+-- Name: review_votes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.review_votes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: review_votes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.review_votes_id_seq OWNED BY public.review_votes.id;
+
+
+--
 -- Name: reviews; Type: TABLE; Schema: public; Owner: -
 --
-Name: reviews_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+
+CREATE TABLE public.reviews (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    product_id integer NOT NULL,
+    rating integer NOT NULL,
+    comment text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT reviews_rating_check CHECK (((rating >= 1) AND (rating <= 5)))
+);
+
+
+--
+-- Name: reviews_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 ALTER TABLE public.reviews ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
@@ -274,24 +388,12 @@ ALTER TABLE public.reviews ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.users (
     id integer NOT NULL,
-    full_name
-CREATE TABLE public.reviews (
-    id integer NOT NULL,
-    user_id integer NOT NULL,
-    product_id integer NOT NULL,
-    rating integer NOT NULL,
-    comment text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT reviews_rating_check CHECK (((rating >= 1) AND (rating <= 5)))
-);
-
-
---
---  character varying(120) NOT NULL,
+    full_name character varying(120) NOT NULL,
     email character varying(255) NOT NULL,
     password_hash text NOT NULL,
     role character varying(20) DEFAULT 'customer'::character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    phone character varying(20),
     CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['customer'::character varying, 'seller'::character varying, 'admin'::character varying])::text[])))
 );
 
@@ -308,6 +410,20 @@ ALTER TABLE public.users ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
+
+--
+-- Name: reports id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reports ALTER COLUMN id SET DEFAULT nextval('public.reports_id_seq'::regclass);
+
+
+--
+-- Name: review_votes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.review_votes ALTER COLUMN id SET DEFAULT nextval('public.review_votes_id_seq'::regclass);
 
 
 --
@@ -391,6 +507,22 @@ ALTER TABLE ONLY public.orders
 
 
 --
+-- Name: password_reset_tokens password_reset_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.password_reset_tokens
+    ADD CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: password_reset_tokens password_reset_tokens_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.password_reset_tokens
+    ADD CONSTRAINT password_reset_tokens_token_hash_key UNIQUE (token_hash);
+
+
+--
 -- Name: payments payments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -415,6 +547,22 @@ ALTER TABLE ONLY public.products
 
 
 --
+-- Name: reports reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reports
+    ADD CONSTRAINT reports_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: review_votes review_votes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.review_votes
+    ADD CONSTRAINT review_votes_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: reviews reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -428,6 +576,14 @@ ALTER TABLE ONLY public.reviews
 
 ALTER TABLE ONLY public.reviews
     ADD CONSTRAINT reviews_user_id_product_id_key UNIQUE (user_id, product_id);
+
+
+--
+-- Name: review_votes unique_user_review_vote; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.review_votes
+    ADD CONSTRAINT unique_user_review_vote UNIQUE (review_id, user_id);
 
 
 --
@@ -479,6 +635,13 @@ CREATE INDEX idx_orders_status ON public.orders USING btree (status);
 --
 
 CREATE INDEX idx_orders_user_created ON public.orders USING btree (user_id, created_at DESC);
+
+
+--
+-- Name: idx_password_reset_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_password_reset_user ON public.password_reset_tokens USING btree (user_id);
 
 
 --
@@ -538,6 +701,14 @@ ALTER TABLE ONLY public.cart_items
 
 ALTER TABLE ONLY public.carts
     ADD CONSTRAINT carts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: password_reset_tokens fk_password_reset_user; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.password_reset_tokens
+    ADD CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -605,6 +776,46 @@ ALTER TABLE ONLY public.products
 
 
 --
+-- Name: reports reports_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reports
+    ADD CONSTRAINT reports_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+
+
+--
+-- Name: reports reports_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reports
+    ADD CONSTRAINT reports_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+
+
+--
+-- Name: reports reports_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reports
+    ADD CONSTRAINT reports_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: review_votes review_votes_review_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.review_votes
+    ADD CONSTRAINT review_votes_review_id_fkey FOREIGN KEY (review_id) REFERENCES public.reviews(id) ON DELETE CASCADE;
+
+
+--
+-- Name: review_votes review_votes_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.review_votes
+    ADD CONSTRAINT review_votes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: reviews reviews_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -624,5 +835,5 @@ ALTER TABLE ONLY public.reviews
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 0e8aNCh8bB01zqj2BOVzyg3PQo2xq5qygS5HkYKk6aTwaqNbwzdQ34gdIupR5hM
+\unrestrict 9IxSGInysHIFdr86p3g7gTMR8ecZShdck41lgT6UityAGjBmZNtiRhi22ZJDYYe
 

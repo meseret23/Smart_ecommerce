@@ -9,6 +9,12 @@ import cartRoutes from './routes/cart.js';
 import orderRoutes from './routes/orders.js';
 import reportRoutes from './routes/report';
 import aiRouter from './routes/ai';
+import passwordResetRoutes from "./routes/passwordReset";
+import notificationRoutes from './routes/notifications.js';
+import path from 'path';
+
+
+
 
 dotenv.config();
 
@@ -40,13 +46,15 @@ app.get('/api/db-check', async (_req, res) => {
     });
   }
 });
-
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api/ai', aiRouter);
 app.use('/api/products', productRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use("/api/auth", passwordResetRoutes);
 
 
 // Start the server
