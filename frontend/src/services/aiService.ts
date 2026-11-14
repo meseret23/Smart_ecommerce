@@ -22,7 +22,6 @@ export const processUserQuery = async (
 ): Promise<{ text: string; products: Product[] }> => {
   const lowerQuery = query.trim().toLowerCase();
 
-  // 1. Handle Greetings
   if (['hello', 'hi', 'hey', 'salam', 'selam', 'good morning', 'good afternoon'].includes(lowerQuery)) {
     return {
       text: "Selam! How can I help you today? You can ask me for product recommendations, specific categories, or items within your budget!",
@@ -30,7 +29,7 @@ export const processUserQuery = async (
     };
   }
 
-  // 2. Handle Price / Budget Limits
+ 
   const priceMatch = lowerQuery.match(/(?:under|below|less than|max|budget of)\s*(\d+)/i) || lowerQuery.match(/(\d+)\s*(?:etb|birr)/i);
   
   if (priceMatch && priceMatch[1]) {
@@ -51,7 +50,7 @@ export const processUserQuery = async (
     }
   }
 
-  // 3. Handle Deals & Cheap items
+
   if (lowerQuery.includes('cheap') || lowerQuery.includes('budget') || lowerQuery.includes('best deals') || lowerQuery.includes('deal')) {
     const sorted = [...catalog].sort((a, b) => Number(a.price) - Number(b.price));
     return {
