@@ -314,7 +314,6 @@ const updateCartItem = async (
   }
 };
 
-
 const removeCartItem = async (
   req: Request,
   res: Response,
@@ -376,7 +375,6 @@ const removeCartItem = async (
     });
   }
 };
-
 
 const clearCart = async (
   req: Request,
@@ -537,23 +535,6 @@ export const verifyCart = async (req: Request, res: Response): Promise<void> => 
     client?.release();
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 router.post('/verify', authenticateToken, verifyCart);
 router.delete('/', authenticateToken, clearCart);

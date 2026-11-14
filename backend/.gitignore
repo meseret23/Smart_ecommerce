@@ -1,3 +1,5 @@
 node_modules/
 dist/
 .env
+# Customer-uploaded files
+backend/uploads/
